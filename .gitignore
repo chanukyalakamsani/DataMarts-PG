@@ -10,6 +10,7 @@ project/target/
 target/
 build/
 src/main/resources/data/
+!src/main/resources/application.conf
 
 # intellij idea
 *.log

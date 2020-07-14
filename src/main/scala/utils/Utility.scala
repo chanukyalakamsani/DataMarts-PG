@@ -37,7 +37,7 @@ object Utility {
     return olTxnDf
   }
 
-  def WriteToS3(df: DataFrame, filepath: String): String = {
+  def WriteToS3(df: DataFrame, s3_bukcet:String, filename:String): String = {
     try {
       val df1 = df.withColumn("ins_ts", current_date())
       df1.show()
@@ -45,9 +45,10 @@ object Utility {
         .partitionBy("ins_ts")
         .option("header", "true")
         .mode("overwrite")
-        .parquet(filepath)
+        .parquet(s"s3n://${s3_bucket}/PG-DataMart/${filename}/")
       return "Data is written to S3"
     }
+
 
   }
 }
