@@ -1,11 +1,11 @@
 package com.pg
-import com.pg.utils.{Constants, Utility}
+import com.pg.utils.Constants
+import com.pg.utils.Utility
 import com.typesafe.config.ConfigFactory
+import org.apache.spark.sql.SparkSession
 
 import scala.collection.JavaConversions._
-import scala.util.matching.Regex.Match
-//import com.pg.IOperations1
-
+import org.apache.spark.sql.functions._
 
 object SourceDataLoading {
   def main(args: Array[String]): Unit = {
@@ -16,32 +16,40 @@ object SourceDataLoading {
         .getOrCreate()
       spark.sparkContext.setLogLevel(Constants.ERROR)
       val rootConfig = ConfigFactory.load("application.conf").getConfig("conf")
-      val sftpConfig = rootConfig.getConfig("sftp_conf")
       val s3Config = rootConfig.getConfig("s3_conf")
+      val s3Bucket = s3Config.getString("s3_bucket")
       val SrcList = rootConfig.getStringList("SOURCE_DATA").toList
       spark.sparkContext.hadoopConfiguration.set("fs.s3n.awsAccessKeyId", s3Config.getString("access_key"))
       spark.sparkContext.hadoopConfiguration.set("fs.s3n.awsSecretAccessKey", s3Config.getString("secret_access_key"))
-      for(src <- SrcList){
+      for(src <- SrcList) {
+        val srcConfig = rootConfig.getConfig(src)
         src match {
+          case "OL" =>
+            val df = Utility
+              .readFromSftp(spark, srcConfig.getConfig("sftp_conf"), srcConfig.getString("filename"))
+              .withColumn("ins_ts", current_date())
+            df.show()
+            Utility.WriteToS3(df, s3Bucket, src)
+
+          case "SB" =>
+            val txnDf = Utility.readFromMysql(spark, srcConfig.getConfig("mysql_conf"), srcConfig.getString("table"))
+              .withColumn("ins_ts", current_date())
+            txnDf.show()
+            Utility.WriteToS3(txnDf, s3Bucket, src)
+
+          case "1CP" =>
+            val cpDf = Utility.readFromS3(spark, srcConfig.getString("filename"))
+              .withColumn("ins_ts", current_date())
+            cpDf.show()
+            Utility.WriteToS3(cpDf, s3Bucket, src)
 
         }
       }
-      //val temp = new IOperations1(spark)
-      val localpath = s"${sftpConfig.getString("directory")}/"
-      val filename = "receipts_delta_GBR_14_10_2017.csv"
-      val s3_bucket = s3Config.getString("s3_bucket")
-      val filename  = "OL"
-      val df = Utility.sftp(spark,sftpConfig,localpath+filename)
-      df.show(false)
-      Utility.WriteToS3(df,s3_bucket,filename)
-
-    }
-    catch {
+      spark.stop()
+    } catch {
       case ex: Throwable => {
         ex.printStackTrace()
       }
     }
-
   }
-
 }
